@@ -369,6 +369,7 @@ export function registerAuth(context: vscode.ExtensionContext, logger: (value: s
 		// Open the authorization URL in the default browser
 		const authURI = vscode.Uri.parse(gitpodAuth);
 
+		// Todo(ft): fix query encoding problems
 		const opened = await vscode.env.openExternal(authURI);
 		if (!opened) {
 			const selected = await vscode.window.showErrorMessage(`Couldn't open ${authURI.toString(true)} automatically, please copy and paste it to your browser manually.`, 'Copy', 'Cancel');
