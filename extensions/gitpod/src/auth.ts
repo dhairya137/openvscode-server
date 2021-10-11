@@ -125,17 +125,18 @@ const newConfig = {
 async function getValidSessions(context: vscode.ExtensionContext, scopes?: readonly string[]): Promise<vscode.AuthenticationSession[]> {
 	const existingSessionsJSON = await context.secrets.get('gitpod.authSessions') || '[]';
 	const sessions: vscode.AuthenticationSession[] = JSON.parse(existingSessionsJSON);
-	let index = 0;
-	for (const session of sessions) {
+
+	for (const [index, session] of sessions.entries()) {
 		const availableScopes = await checkScopes(session.accessToken);
 		if (!(scopes || [...gitpodScopes]).every((scope) => availableScopes.includes(scope))) {
 			vscode.window.showErrorMessage('Token invalid.');
-			delete sessions[index++];
+			delete sessions[index];
 		}
 	}
+
 	const newSessionsJSON = JSON.stringify(sessions);
 	await context.secrets.store('gitpod.authSessions', newSessionsJSON);
-	if (sessions.length === 0) {
+	if (sessions.length === 0 && existingSessionsJSON !== '[]' && JSON.parse(existingSessionsJSON).length !== 0) {
 		vscode.window.showErrorMessage('Your login session with Gitpod has expired. You need to sign in again.');
 	}
 	return sessions;
