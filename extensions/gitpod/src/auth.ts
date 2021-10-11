@@ -89,6 +89,27 @@ function promiseFromEvent<T, U>(
 }
 
 /**
+ * Gets all auth sessions that are stored by the extension
+ * @param context the VS Code Extension context
+ * @returns a list of auth sessions.
+ */
+export async function getAuthSessions(context: vscode.ExtensionContext): Promise<vscode.AuthenticationSession[]> {
+	const existingSessionsJSON = await context.secrets.get('gitpod.authSessions') || '[]';
+	const sessions: vscode.AuthenticationSession[] = JSON.parse(existingSessionsJSON);
+	return sessions;
+}
+
+/**
+ * Stores a provided array of authentication sessions to the secret store
+ * @param sessions an array of auth sessions to store
+ * @param context the VS Code Extension context
+ */
+export async function storeAuthSessions(sessions: vscode.AuthenticationSession[], context: vscode.ExtensionContext): Promise<void> {
+	const parsedSessions = JSON.stringify(sessions);
+	await context.secrets.store('gitpod.authSessions', parsedSessions);
+}
+
+/**
  * Prompts the user to reload VS Code (executes native `workbench.action.reloadWindow`)
  * @param msg - optionally, overwrite the message to be displayed
 */
@@ -123,8 +144,7 @@ const newConfig = {
  * @returns a list of sessions which are valid
  */
 async function getValidSessions(context: vscode.ExtensionContext, scopes?: readonly string[]): Promise<vscode.AuthenticationSession[]> {
-	const existingSessionsJSON = await context.secrets.get('gitpod.authSessions') || '[]';
-	const sessions: vscode.AuthenticationSession[] = JSON.parse(existingSessionsJSON);
+	const sessions = await getAuthSessions(context);
 
 	for (const [index, session] of sessions.entries()) {
 		const availableScopes = await checkScopes(session.accessToken);
@@ -134,9 +154,8 @@ async function getValidSessions(context: vscode.ExtensionContext, scopes?: reado
 		}
 	}
 
-	const newSessionsJSON = JSON.stringify(sessions);
-	await context.secrets.store('gitpod.authSessions', newSessionsJSON);
-	if (sessions.length === 0 && existingSessionsJSON !== '[]' && JSON.parse(existingSessionsJSON).length !== 0) {
+	await storeAuthSessions(sessions, context);
+	if (sessions.length === 0 && (await getAuthSessions(context)).length !== 0) {
 		vscode.window.showErrorMessage('Your login session with Gitpod has expired. You need to sign in again.');
 	}
 	return sessions;
@@ -209,7 +228,9 @@ async function createApiWebSocket(accessToken: string): Promise<{ gitpodService:
 			startClosed: false,
 			WebSocket: GitpodServerWebSocket
 		});
-		webSocket.onerror = console.error;
+		webSocket.onerror = (err) => {
+			vscode.window.showErrorMessage(`WebSocket error: ${err.message}`);
+		};
 		doListen({
 			webSocket,
 			logger: new ConsoleLogger(),
@@ -326,10 +347,9 @@ export function registerAuth(context: vscode.ExtensionContext, logger: (value: s
 
 		logger('Retrieving the session');
 
-		const currentSessionsJSON = await context.secrets.get('gitpod.authSessions');
-		if (currentSessionsJSON) {
-			const sessions: vscode.AuthenticationSession[] = JSON.parse(currentSessionsJSON);
-			return sessions[sessions.length - 1];
+		const currentSessions = await getAuthSessions(context);
+		if (currentSessions.length > 0) {
+			return currentSessions[currentSessions.length - 1];
 		} else {
 			vscode.window.showErrorMessage('Couldn\'t find any auth sessions');
 			return null;
@@ -363,6 +383,7 @@ export function registerAuth(context: vscode.ExtensionContext, logger: (value: s
 		const timeoutPromise = new Promise((_: (value: vscode.AuthenticationSession) => void, reject): void => {
 			const wait = setTimeout(() => {
 				clearTimeout(wait);
+				vscode.window.showErrorMessage('Login timed out, please try to sign in again.');
 				reject('Login timed out.');
 			}, 1000 * 60 * 5); // 5 minutes
 		});
@@ -393,10 +414,9 @@ export function registerAuth(context: vscode.ExtensionContext, logger: (value: s
 			return createSession(scopes);
 		},
 		removeSession: async (sessionId) => {
-			const sessions = getValidSessions(context);
+			const sessions = getAuthSessions(context);
 			const filteredSessions = (await sessions).filter((session) => session.id !== sessionId);
-			const newSessionsJSON = JSON.stringify(filteredSessions);
-			await context.secrets.store('gitpod.authSessions', newSessionsJSON);
+			await storeAuthSessions(filteredSessions, context);
 		},
 	}, { supportsMultipleAccounts: false }));
 	logger('Pushed auth');
