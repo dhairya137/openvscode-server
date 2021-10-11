@@ -142,14 +142,14 @@ async function getValidSessions(context: vscode.ExtensionContext, scopes?: reado
 	return sessions;
 }
 
-function updateSyncContext() {
+/**
+ * Updates the VS Code context to reflect whether the user added Gitpod as their Settings Sync provider.
+ */
+async function updateSyncContext() {
 	const config = vscode.workspace.getConfiguration();
 	const syncConfig = config.get('configurationSync.store');
-	if (syncConfig && JSON.stringify(syncConfig) === JSON.stringify(newConfig)) {
-		vscode.commands.executeCommand('setContext', 'gitpod.addedSyncProvider', true);
-	} else {
-		vscode.commands.executeCommand('setContext', 'gitpod.addedSyncProvider', false);
-	}
+	const adddedSyncProvider = syncConfig && JSON.stringify(syncConfig) === JSON.stringify(newConfig);
+	await vscode.commands.executeCommand('setContext', 'gitpod.addedSyncProvider', adddedSyncProvider);
 }
 
 /**
